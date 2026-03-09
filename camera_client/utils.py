@@ -46,7 +46,47 @@ def normalize_expression(expr):
     Returns:
         Normalized expression string
     """
-    expr = expr.replace("sqrt", "np.sqrt")
+    # Replace math functions with numpy equivalents
+    # For sqrt, we need special handling to avoid object dtype issues with large integers
+    # We replace sqrt(x) with np.sqrt(np.asarray(x, dtype=np.float64))
+    import re
+
+    # Find all sqrt(...) calls and wrap the argument
+    # Match sqrt followed by parentheses, handling nested parentheses
+    def replace_sqrt(match):
+        return f"np.sqrt(np.asarray({match.group(1)}, dtype=np.float64))"
+
+    # Use regex to find sqrt(...) with balanced parentheses
+    # This pattern matches sqrt( followed by content, handling nested parentheses
+    depth = 0
+    result = []
+    i = 0
+    while i < len(expr):
+        if expr[i:i+4] == 'sqrt':
+            # Found sqrt, now find the matching closing parenthesis
+            if i + 4 < len(expr) and expr[i+4] == '(':
+                start = i + 5  # Start of argument
+                depth = 1
+                j = start
+                while j < len(expr) and depth > 0:
+                    if expr[j] == '(':
+                        depth += 1
+                    elif expr[j] == ')':
+                        depth -= 1
+                    j += 1
+                # j now points to one past the closing paren
+                arg = expr[start:j-1]
+                result.append(f"np.sqrt(np.asarray({arg}, dtype=np.float64))")
+                i = j
+            else:
+                result.append(expr[i])
+                i += 1
+        else:
+            result.append(expr[i])
+            i += 1
+
+    expr = ''.join(result)
+
     expr = expr.replace("sin(", "np.sin(")
     expr = expr.replace("cos(", "np.cos(")
     expr = expr.replace("tan(", "np.tan(")

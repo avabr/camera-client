@@ -17,8 +17,10 @@ class CameraProjection:
     """
 
     # Allowed variable names for different transformation types
-    VARS_CTD_TO_GND = {"x_im", "y_im", "proj_height", "np"}
-    VARS_GND_TO_CTD = {"x_gnd", "y_gnd", "z_gnd", "np"}
+    VARS_CTD_TO_GND = {"x_im", "y_im", "proj_height", "np", "float64", "asarray", "dtype"}
+    VARS_GND_TO_CTD = {"x_gnd", "y_gnd", "z_gnd", "np", "float64", "asarray", "dtype"}
+    VARS_CTD_TO_RAY = {"x_im", "y_im", "np", "float64", "asarray", "dtype"}
+    VARS_KEYPOINT = {"np", "float64", "asarray", "dtype"}
 
     def __init__(self, cam_archive_data):
         """
@@ -71,6 +73,40 @@ class CameraProjection:
             data["y_im"],
             param_names=["x_gnd", "y_gnd", "z_gnd"],
             allowed_vars=self.VARS_GND_TO_CTD,
+        )
+
+        # Compile keypoint expressions (camera position in world space)
+        self._x_key_func = compile_safe_expression(
+            data["x_key"],
+            param_names=[],
+            allowed_vars=self.VARS_KEYPOINT,
+        )
+        self._y_key_func = compile_safe_expression(
+            data["y_key"],
+            param_names=[],
+            allowed_vars=self.VARS_KEYPOINT,
+        )
+        self._z_key_func = compile_safe_expression(
+            data["z_key"],
+            param_names=[],
+            allowed_vars=self.VARS_KEYPOINT,
+        )
+
+        # Compile ray direction expressions for ctd -> ray
+        self._x_ray_func = compile_safe_expression(
+            data["x_ray"],
+            param_names=["x_im", "y_im"],
+            allowed_vars=self.VARS_CTD_TO_RAY,
+        )
+        self._y_ray_func = compile_safe_expression(
+            data["y_ray"],
+            param_names=["x_im", "y_im"],
+            allowed_vars=self.VARS_CTD_TO_RAY,
+        )
+        self._z_ray_func = compile_safe_expression(
+            data["z_ray"],
+            param_names=["x_im", "y_im"],
+            allowed_vars=self.VARS_CTD_TO_RAY,
         )
 
     def src_to_ctd(self, points):
@@ -286,6 +322,83 @@ class CameraProjection:
         """
         ctd_points = self.gnd_to_ctd(points)
         return self.ctd_to_src(ctd_points)
+
+    def ctd_to_ray(self, points):
+        """
+        Transform from corrected image coordinates to 3D rays in camera space.
+
+        Args:
+            points: (N, 2) array of corrected image points [[x1, y1], [x2, y2], ...]
+
+        Returns two argiments:
+            - (3,) 3D coordinates of the key-point of the camera in world space
+            - (N, 3) array of ray directions in camera space, with [nan, nan, nan] for invalid
+        Ray directions are normalized to unit length.
+        The ray for a point is defined as the vector from key-point of the camera.
+        """
+        points = np.asarray(points, dtype=float)
+        if points.ndim != 2 or points.shape[1] != 2:
+            raise ValueError(f"Expected (N, 2) array, got shape {points.shape}")
+
+        N = len(points)
+        ray_directions = np.full((N, 3), np.nan, dtype=float)
+
+        # Calculate keypoint (camera position in world space)
+        # These are typically constants, so we call with no arguments
+        keypoint = np.array([
+            self._x_key_func(),
+            self._y_key_func(),
+            self._z_key_func()
+        ], dtype=float)
+
+        # Check for valid points (not NaN)
+        valid = ~np.isnan(points).any(axis=1)
+
+        if not valid.any():
+            return keypoint, ray_directions
+
+        # Extract valid corrected points
+        valid_points = points[valid]
+
+        # Vectorized ray direction evaluation
+        x_im = valid_points[:, 0]
+        y_im = valid_points[:, 1]
+
+        # Evaluate ray direction expressions
+        ray_x = self._x_ray_func(x_im, y_im)
+        ray_y = self._y_ray_func(x_im, y_im)
+        ray_z = self._z_ray_func(x_im, y_im)
+
+        # Stack ray components and ensure float64 dtype
+        # (expressions with large integers can create object dtype arrays)
+        rays = np.column_stack([ray_x, ray_y, ray_z]).astype(np.float64)
+
+        # Normalize ray directions to unit length
+        ray_lengths = np.linalg.norm(rays, axis=1, keepdims=True)
+        # Avoid division by zero
+        ray_lengths = np.where(ray_lengths > 0, ray_lengths, 1.0)
+        rays_normalized = rays / ray_lengths
+
+        # Assign normalized rays to valid indices
+        ray_directions[valid] = rays_normalized
+
+        return keypoint, ray_directions
+
+    def src_to_ray(self, points):
+        """
+        Transform from source image coordinates to 3D rays in camera space.
+
+        Args:
+            points: (N, 2) array of source points [[x1, y1], [x2, y2], ...]
+
+        Returns two argiments:
+            - (3,) 3D coordinates of the key-point of the camera in world space
+            - (N, 3) array of ray directions in camera space, with [nan, nan, nan] for invalid
+        Ray directions are normalized to unit length.
+        The ray for a point is defined as the vector from key-point of the camera.
+        """
+        ctd_points = self.src_to_ctd(points)
+        return self.ctd_to_ray(ctd_points)
 
     @classmethod
     def load(cls, archive_path):
