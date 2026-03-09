@@ -17,7 +17,15 @@ class CameraProjection:
     """
 
     # Allowed variable names for different transformation types
-    VARS_CTD_TO_GND = {"x_im", "y_im", "proj_height", "np", "float64", "asarray", "dtype"}
+    VARS_CTD_TO_GND = {
+        "x_im",
+        "y_im",
+        "proj_height",
+        "np",
+        "float64",
+        "asarray",
+        "dtype",
+    }
     VARS_GND_TO_CTD = {"x_gnd", "y_gnd", "z_gnd", "np", "float64", "asarray", "dtype"}
     VARS_CTD_TO_RAY = {"x_im", "y_im", "np", "float64", "asarray", "dtype"}
     VARS_KEYPOINT = {"np", "float64", "asarray", "dtype"}
@@ -35,9 +43,9 @@ class CameraProjection:
         """
         data = cam_archive_data
 
-        self.plan_scale = data["plan_scale"]
-        self.im_width = data["im_width"]
-        self.im_height = data["im_height"]
+        self.plan_scale = float(data["plan_scale"])
+        self.im_width = int(data["im_width"])
+        self.im_height = int(data["im_height"])
         self.im_wh_size = (self.im_width, self.im_height)
 
         # Store lookup tables
@@ -345,11 +353,9 @@ class CameraProjection:
 
         # Calculate keypoint (camera position in world space)
         # These are typically constants, so we call with no arguments
-        keypoint = np.array([
-            self._x_key_func(),
-            self._y_key_func(),
-            self._z_key_func()
-        ], dtype=float)
+        keypoint = np.array(
+            [self._x_key_func(), self._y_key_func(), self._z_key_func()], dtype=float
+        )
 
         # Check for valid points (not NaN)
         valid = ~np.isnan(points).any(axis=1)
