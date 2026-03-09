@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "camera-client"
+version = "0.1.0"
+description = "Python SDK for camera calibration projection data - transform between distorted, corrected, and world coordinates."
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "Alexander Abramov", email = "extremal.ru@gmail.com"},
+]
+keywords = ["camera", "calibration", "projection", "3d", "mathematics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = [
+    "numpy>=1.20.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/avabr/camera-client"
+Repository = "https://github.com/avabr/camera-client"
+Issues = "https://github.com/avabr/camera-client/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["camera_client*", "camera_client"]
+
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.md"]
+
+[project.scripts]
+camera-client = "camera_client.script:main"
