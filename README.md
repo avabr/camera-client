@@ -8,6 +8,8 @@ Python SDK for camera calibration and projection transformations. Transform coor
 - **Multiple coordinate systems** - Transform between source (distorted), corrected, and ground (3D world) coordinates
 - **Lens distortion handling** - Correct for camera lens distortion using calibration lookup tables
 - **Ground plane projection** - Project image coordinates to 3D world coordinates and vice versa
+- **Ray casting** - Generate 3D rays from image coordinates for ray tracing and 3D reconstruction
+- **Sympy-based transformations** - Fast compiled symbolic expressions for mathematical transformations
 - **NumPy-based** - Fast array operations with minimal dependencies
 
 ## Installation
@@ -27,12 +29,13 @@ from camera_client import CameraProjection
 # Load camera calibration data from NPZ archive
 camera = CameraProjection.load("camera_calibration.npz")
 
-# Transform single or multiple points (vectorized operations)
+# Transform multiple points (vectorized operations)
+# Note: All methods require (N, 2) or (N, 3) shaped arrays
 source_points = np.array([
     [100, 200],
     [300, 400],
     [500, 600]
-])
+])  # Shape: (3, 2)
 
 # Remove lens distortion
 corrected_points = camera.src_to_ctd(source_points)
@@ -129,6 +132,28 @@ corrected = camera.src_to_ctd(random_points)
 ground = camera.src_to_gnd(random_points, h=0)
 ```
 
+### Ray Casting (3D Reconstruction)
+
+```python
+# Get 3D rays from image points (useful for ray tracing, 3D reconstruction)
+src_points = np.array([[640, 480], [800, 600]])
+
+# Get ray directions from source (distorted) coordinates
+rays = camera.src_to_ray(src_points)
+print(rays.shape)  # (2, 3) - normalized direction vectors
+
+# Or from corrected coordinates
+ctd_points = camera.src_to_ctd(src_points)
+rays = camera.ctd_to_ray(ctd_points)
+
+# Get camera position in world space (ray origin)
+key_point = camera.get_key_point()
+print(key_point.shape)  # (3,) - [x, y, z] camera position
+
+# Ray equation: point_on_ray = key_point + t * ray_direction
+# All rays are normalized to unit length
+```
+
 ### Accessing Camera Properties
 
 ```python
@@ -157,10 +182,12 @@ Load camera calibration from NPZ file.
 Transform from source (distorted) to corrected coordinates.
 
 **Parameters:**
-- `points` (np.ndarray): Shape (N, 2) array of [x, y] coordinates
+- `points` (np.ndarray): Shape **(N, 2)** array of [x, y] coordinates
 
 **Returns:**
-- `np.ndarray`: Shape (N, 2) corrected coordinates
+- `np.ndarray`: Shape **(N, 2)** corrected coordinates
+
+**Note:** Input must be 2D array. For single point use `np.array([[x, y]])`
 
 ---
 
@@ -224,21 +251,67 @@ Transform from 3D ground coordinates to corrected coordinates.
 **Returns:**
 - `np.ndarray`: Shape (N, 2) corrected coordinates
 
+---
+
+### `src_to_ray(points)`
+
+Generate 3D ray directions from source (distorted) image coordinates.
+
+**Parameters:**
+- `points` (np.ndarray): Shape (N, 2) array of [x, y] coordinates
+
+**Returns:**
+- `np.ndarray`: Shape (N, 3) normalized ray direction vectors
+
+**Note:** All rays originate from the camera key-point (use `get_key_point()`)
+
+---
+
+### `ctd_to_ray(points)`
+
+Generate 3D ray directions from corrected (undistorted) image coordinates.
+
+**Parameters:**
+- `points` (np.ndarray): Shape (N, 2) array of [x, y] coordinates
+
+**Returns:**
+- `np.ndarray`: Shape (N, 3) normalized ray direction vectors
+
+---
+
+### `get_key_point()`
+
+Get the camera position (key-point) in world space.
+
+**Returns:**
+- `np.ndarray`: Shape (3,) array with [x, y, z] camera position
+
 ## Calibration File Format
 
 The calibration file is a NumPy `.npz` archive containing:
 
-- `src2ctd`: Lookup table for source to corrected transformation (H x W x 2)
-- `ctd2src`: Lookup table for corrected to source transformation (H x W x 2)
-- `x_gnd`, `y_gnd`, `z_gnd`: Expression strings for corrected to ground transformation
-- `x_im`, `y_im`: Expression strings for ground to corrected transformation
-- `im_width`, `im_height`: Image dimensions
-- `plan_scale`: Scale factor for ground plane
+### Lookup Tables
+- `src2ctd`: Source to corrected coordinate map (H x W x 2)
+- `ctd2src`: Corrected to source coordinate map (H x W x 2)
+- `map_scale_h`: Height scale values (H x W)
+- `map_scale_w`: Width scale values (H x W)
+- `map_scale_vang`: Vertical angle values (H x W)
+
+### Symbolic Expressions (stored as strings, parsed with SymPy)
+- `exp_im2gnd`: Image to ground coordinate transformation
+- `exp_gnd2im`: Ground to image coordinate transformation
+- `exp_key_point`: Camera key-point (position) in world space
+- `exp_im2ray`: Image to ray direction transformation
+
+### Metadata
+- `im_width`, `im_height`: Image dimensions in pixels
+- `plan_scale`: Scale factor for ground plane coordinates (pixels per meter)
 
 ## Requirements
 
 - Python >= 3.7
 - NumPy >= 1.20.0
+- SymPy >= 1.10.0
 
 ## Links
 
@@ -253,3 +326,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Author
 
 Alexander Abramov ([extremal.ru@gmail.com](mailto:extremal.ru@gmail.com))
+
+## Upload PyPi
+
+    rm dist/* && python -m build && python -m twine upload dist/*
+    

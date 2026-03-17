@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "camera-client"
-version = "0.1.2"
-description = "Python SDK for camera calibration projection data - transform between distorted, corrected, and world coordinates."
+version = "0.2.1"
+description = "Python SDK for camera calibration and projection transformations - handle lens distortion, coordinate transformations, and 3D ray casting with symbolic expressions."
 readme = "README.md"
 requires-python = ">=3.7"
 license = {text = "MIT"}
 authors = [
     {name = "Alexander Abramov", email = "extremal.ru@gmail.com"},
 ]
-keywords = ["camera", "calibration", "projection", "3d", "mathematics"]
+keywords = ["camera", "calibration", "projection", "3d", "ray-casting", "computer-vision", "lens-distortion", "coordinate-transformation", "sympy"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -29,7 +29,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 dependencies = [
-    "numpy>=1.20.0"
+    "numpy>=1.20.0",
+    "sympy>=1.10.0"
 ]
 
 [project.urls]
