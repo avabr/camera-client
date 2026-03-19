@@ -30,6 +30,12 @@ class CameraProjection:
         data = cam_archive_data
 
         self.plan_scale = float(data["plan_scale"])
+        self.plan_url = str(data["plan_url"])
+        self.plan_width = int(data["plan_width"])
+        self.plan_height = int(data["plan_height"])
+
+        self.im_src_url = str(data["im_src_url"])
+        self.im_ctd_url = str(data["im_ctd_url"])
         self.im_width = int(data["im_width"])
         self.im_height = int(data["im_height"])
         self.im_wh_size = (self.im_width, self.im_height)

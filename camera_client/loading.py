@@ -11,10 +11,15 @@ def read_npz_file(filename):
 
     Returns:
         dict: Dictionary containing the following keys:
-            - format_version (str): Version of the data format
+            - format_version (str): Version string of the data format
+            - plan_url (str): URL or path to the ground plan image
             - plan_scale (float): Scale factor for ground plane coordinates (pixels per meter)
-            - im_width (int): Width of the image in pixels
-            - im_height (int): Height of the image in pixels
+            - plan_width (int): Width of the ground plan in pixels
+            - plan_height (int): Height of the ground plan in pixels
+            - im_src_url (str): URL or path to the source (distorted) camera image
+            - im_ctd_url (str): URL or path to the corrected (undistorted) camera image
+            - im_width (int): Width of the camera image in pixels
+            - im_height (int): Height of the camera image in pixels
             - src2ctd (np.ndarray): Map of coordinates for undistorted (corrected) image.
                                    Shape: (height, width, 2) where channel 0 is X, channel 1 is Y
             - ctd2src (np.ndarray): Map of coordinates for distorted (raw) image based on undistorted.
@@ -29,7 +34,17 @@ def read_npz_file(filename):
     """
     data = np.load(filename)
 
+    format_version = str(data["format_version"])
+
+    # Plan options
+    plan_url = str(data["plan_url"])
     plan_scale = data["plan_scale"]
+    plan_width = data["plan_width"]
+    plan_height = data["plan_height"]
+
+    # Camera image options
+    im_src_url = str(data["im_src_url"])
+    im_ctd_url = str(data["im_ctd_url"])
     im_width = data["im_width"]
     im_height = data["im_height"]
 
@@ -51,16 +66,26 @@ def read_npz_file(filename):
     data.close()
 
     return {
+        # Plan options
+        "plan_url": plan_url,
         "plan_scale": plan_scale,
+        "plan_width": plan_width,
+        "plan_height": plan_height,
+        # Camera image option
+        "im_src_url": im_src_url,
+        "im_ctd_url": im_ctd_url,
         "im_width": im_width,
         "im_height": im_height,
+        # Distortion coords maps
         "src2ctd": src2ctd,
         "ctd2src": ctd2src,
-        "map_scale_h": map_scale_h,
-        "map_scale_w": map_scale_w,
-        "map_scale_vang": map_scale_vang,
+        # Perspective projection expressions
         "exp_im2gnd": exp_im2gnd,
         "exp_gnd2im": exp_gnd2im,
         "exp_key_point": exp_key_point,
         "exp_im2ray": exp_im2ray,
+        # Scale maps
+        "map_scale_h": map_scale_h,
+        "map_scale_w": map_scale_w,
+        "map_scale_vang": map_scale_vang,
     }

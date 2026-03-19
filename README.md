@@ -304,8 +304,15 @@ The calibration file is a NumPy `.npz` archive containing:
 - `exp_im2ray`: Image to ray direction transformation
 
 ### Metadata
-- `im_width`, `im_height`: Image dimensions in pixels
+- `format_version`: Version string of the data format
+- `plan_url`: URL or path to the ground plan image
 - `plan_scale`: Scale factor for ground plane coordinates (pixels per meter)
+- `plan_width`: Width of the ground plan in pixels
+- `plan_height`: Height of the ground plan in pixels
+- `im_src_url`: URL or path to the source (distorted) camera image
+- `im_ctd_url`: URL or path to the corrected (undistorted) camera image
+- `im_width`: Width of the camera image in pixels
+- `im_height`: Height of the camera image in pixels
 
 ## Requirements
 
