@@ -1,9 +1,11 @@
+import os
 from camera_client.loading import read_npz_file
 import matplotlib.pyplot as plt
 import numpy as np
 
 # Usage
-fname = "camera_archives/projection_data_5ffb4fd0-b9ba-4aeb-a8d1-e12d81d5a27d.npz"
+camera_uuid = os.environ["TESTING_CAMERA_UUID"]
+fname = f"camera_archives/camera_{camera_uuid}.npz"
 
 data = read_npz_file(fname)
 

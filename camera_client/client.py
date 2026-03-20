@@ -29,6 +29,9 @@ class CameraProjection:
         """
         data = cam_archive_data
 
+        self.camera_id = data["camera_id"]
+        self.ctd_geometry = data["ctd_geometry"]
+
         self.plan_scale = float(data["plan_scale"])
         self.plan_url = str(data["plan_url"])
         self.plan_width = int(data["plan_width"])

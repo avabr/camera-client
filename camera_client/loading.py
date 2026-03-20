@@ -1,3 +1,4 @@
+import json
 import numpy as np
 import sympy as sp
 
@@ -12,6 +13,7 @@ def read_npz_file(filename):
     Returns:
         dict: Dictionary containing the following keys:
             - format_version (str): Version string of the data format
+            - camera_id (int): Integer identifier for the camera
             - plan_url (str): URL or path to the ground plan image
             - plan_scale (float): Scale factor for ground plane coordinates (pixels per meter)
             - plan_width (int): Width of the ground plan in pixels
@@ -31,10 +33,14 @@ def read_npz_file(filename):
             - exp_gnd2im (sp.Expr): Sympy expression for ground to image coordinate transformation
             - exp_key_point (sp.Expr): Sympy expression for keypoint coordinates
             - exp_im2ray (sp.Expr): Sympy expression for image to ray direction transformation
+            - ctd_geometry (dict): JSON object containing geometry data in CTD coordinate system:
+                - efov_polygons: Polygons defining effective field of view in CTD coordinates
+                - counting_lines: Polylines for counting forward/backward track intersections
     """
     data = np.load(filename)
 
     format_version = str(data["format_version"])
+    camera_id = int(data["camera_id"])
 
     # Plan options
     plan_url = str(data["plan_url"])
@@ -62,10 +68,14 @@ def read_npz_file(filename):
     exp_key_point = sp.sympify(str(data["exp_key_point"]))
     exp_im2ray = sp.sympify(str(data["exp_im2ray"]))
 
+    # Ctd image geometry
+    ctd_geometry = json.loads(str(data["ctd_geometry"]))
+
     # Don't forget to close the file
     data.close()
 
     return {
+        "camera_id": camera_id,
         # Plan options
         "plan_url": plan_url,
         "plan_scale": plan_scale,
@@ -88,4 +98,6 @@ def read_npz_file(filename):
         "map_scale_h": map_scale_h,
         "map_scale_w": map_scale_w,
         "map_scale_vang": map_scale_vang,
+        # Ctd image geometry
+        "ctd_geometry": ctd_geometry,
     }
