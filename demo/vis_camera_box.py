@@ -200,7 +200,7 @@ cp = CameraProjection.load(fname)
 src_image_url = data["im_src_url"]
 ctd_image_url = data["im_ctd_url"]
 
-efov = cp.ctd_geometry["efov_polygons"][0]["elements"][0]["coords"]
+efov = cp.ctd_geometry["efov_polygon"]["coordinates"][0]
 print(efov)
 
 # Interpolate polygon with 30 pixel steps

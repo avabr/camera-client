@@ -314,7 +314,7 @@ The calibration file is a NumPy `.npz` archive containing:
 - `im_ctd_url`: URL or path to the corrected (undistorted) camera image
 - `im_width`: Width of the camera image in pixels
 - `im_height`: Height of the camera image in pixels
-- `ctd_geometry`: JSON object with geometry data in CTD coordinates (efov_polygons, counting_lines)
+- `ctd_geometry`: JSON object with geometry data in CTD coordinates (efov_polygon, counting_lines)
 
 ## Requirements
 

@@ -34,7 +34,7 @@ def read_npz_file(filename):
             - exp_key_point (sp.Expr): Sympy expression for keypoint coordinates
             - exp_im2ray (sp.Expr): Sympy expression for image to ray direction transformation
             - ctd_geometry (dict): JSON object containing geometry data in CTD coordinate system:
-                - efov_polygons: Polygons defining effective field of view in CTD coordinates
+                - efov_polygon: Polygon defining effective field of view in CTD coordinates
                 - counting_lines: Polylines for counting forward/backward track intersections
     """
     data = np.load(filename)
