@@ -26,6 +26,7 @@ class CameraProjection:
                 - ctd2src: Corrected to source distortion map (H x W x 2)
                 - x_gnd, y_gnd, z_gnd: String expressions for ctd -> ground
                 - x_im, y_im: String expressions for ground -> ctd
+                - map_scale_h, map_scale_w, map_scale_vang: Scale context maps (H x W)
         """
         data = cam_archive_data
 
@@ -46,6 +47,11 @@ class CameraProjection:
         # Store lookup tables
         self.src2ctd_points_map = data["src2ctd"]
         self.ctd2src_points_map = data["ctd2src"]
+
+        # Store scale context maps
+        self.map_scale_h = data["map_scale_h"]
+        self.map_scale_w = data["map_scale_w"]
+        self.map_scale_vang = data["map_scale_vang"]
 
         self.im_size = self.src2ctd_points_map.shape[:2]
 
@@ -293,6 +299,81 @@ class CameraProjection:
         """
         ctd_points = self.src_to_ctd(points)
         return self.ctd_to_ray(ctd_points)
+
+    def get_ctd_points_context(self, ctd_points):
+        """
+        Get scale context values for corrected (CTD) image points.
+
+        Args:
+            ctd_points: (N, 2) array of corrected points [[x1, y1], [x2, y2], ...]
+
+        Returns:
+            Dictionary with keys:
+                - wscale: (N,) array of width scale values
+                - hscale: (N,) array of height scale values
+                - vangle: (N,) array of vertical angle values
+            Out-of-bounds points will have NaN values.
+        """
+        ctd_points = np.asarray(ctd_points, dtype=float)
+        if ctd_points.ndim != 2 or ctd_points.shape[1] != 2:
+            raise ValueError(f"Expected (N, 2) array, got shape {ctd_points.shape}")
+
+        N = len(ctd_points)
+        wscale = np.full(N, np.nan, dtype=float)
+        hscale = np.full(N, np.nan, dtype=float)
+        vangle = np.full(N, np.nan, dtype=float)
+
+        # Check for NaN input points
+        valid_input = ~np.isnan(ctd_points).any(axis=1)
+
+        if not valid_input.any():
+            return {"wscale": wscale, "hscale": hscale, "vangle": vangle}
+
+        # Round to integer coordinates
+        p_int = np.round(ctd_points[valid_input]).astype(int)
+
+        # Vectorized bounds checking
+        in_bounds = (
+            (p_int[:, 0] >= 0)
+            & (p_int[:, 0] < self.map_scale_w.shape[1])
+            & (p_int[:, 1] >= 0)
+            & (p_int[:, 1] < self.map_scale_w.shape[0])
+        )
+
+        # Create mask for points that are both valid input and in bounds
+        valid_indices = np.where(valid_input)[0]
+        final_valid_indices = valid_indices[in_bounds]
+        valid_p_int = p_int[in_bounds]
+
+        # Vectorized lookup using advanced indexing (y, x indexing)
+        wscale[final_valid_indices] = self.map_scale_w[
+            valid_p_int[:, 1], valid_p_int[:, 0]
+        ]
+        hscale[final_valid_indices] = self.map_scale_h[
+            valid_p_int[:, 1], valid_p_int[:, 0]
+        ]
+        vangle[final_valid_indices] = self.map_scale_vang[
+            valid_p_int[:, 1], valid_p_int[:, 0]
+        ]
+
+        return {"wscale": wscale, "hscale": hscale, "vangle": vangle}
+
+    def get_src_points_context(self, src_points):
+        """
+        Get scale context values for source (distorted) image points.
+
+        Args:
+            src_points: (N, 2) array of source points [[x1, y1], [x2, y2], ...]
+
+        Returns:
+            Dictionary with keys:
+                - wscale: (N,) array of width scale values
+                - hscale: (N,) array of height scale values
+                - vangle: (N,) array of vertical angle values
+            Out-of-bounds points will have NaN values.
+        """
+        ctd_points = self.src_to_ctd(src_points)
+        return self.get_ctd_points_context(ctd_points)
 
     @classmethod
     def load(cls, archive_path):

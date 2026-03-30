@@ -286,6 +286,58 @@ Get the camera position (key-point) in world space.
 **Returns:**
 - `np.ndarray`: Shape (3,) array with [x, y, z] camera position
 
+---
+
+### `get_ctd_points_context(ctd_points)`
+
+Get scale context values for corrected (CTD) image points.
+
+**Parameters:**
+- `ctd_points` (np.ndarray): Shape (N, 2) array of [x, y] corrected coordinates
+
+**Returns:**
+- `dict`: Dictionary with keys:
+  - `wscale` (np.ndarray): Shape (N,) width scale values
+  - `hscale` (np.ndarray): Shape (N,) height scale values
+  - `vangle` (np.ndarray): Shape (N,) vertical angle values (radians)
+
+**Note:** Out-of-bounds points will have NaN values
+
+**Example:**
+```python
+ctd_points = np.array([[640, 480], [800, 600]])
+context = camera.get_ctd_points_context(ctd_points)
+print(context['wscale'])  # Width scale at each point
+print(context['hscale'])  # Height scale at each point
+print(context['vangle'])  # Vertical angle at each point
+```
+
+---
+
+### `get_src_points_context(src_points)`
+
+Get scale context values for source (distorted) image points.
+
+**Parameters:**
+- `src_points` (np.ndarray): Shape (N, 2) array of [x, y] source coordinates
+
+**Returns:**
+- `dict`: Dictionary with keys:
+  - `wscale` (np.ndarray): Shape (N,) width scale values
+  - `hscale` (np.ndarray): Shape (N,) height scale values
+  - `vangle` (np.ndarray): Shape (N,) vertical angle values (radians)
+
+**Note:** Internally converts source points to CTD coordinates first, then retrieves context
+
+**Example:**
+```python
+src_points = np.array([[640, 480], [800, 600]])
+context = camera.get_src_points_context(src_points)
+print(context['wscale'])  # Width scale at each point
+```
+
+---
+
 ## Calibration File Format
 
 The calibration file is a NumPy `.npz` archive containing:
