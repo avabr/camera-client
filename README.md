@@ -20,6 +20,18 @@ Install from PyPI:
 pip install camera-client
 ```
 
+## CLI Usage
+
+Download camera calibration archives from URL:
+
+```bash
+# Download single archive
+python -m camera_client get_camera_archive https://example.com/camera.npz
+
+# Download from file with URLs (one per line, non-URL lines ignored)
+python -m camera_client get_camera_archive -f urls.txt -o ./archives
+```
+
 ## Quick Start
 
 ```python
