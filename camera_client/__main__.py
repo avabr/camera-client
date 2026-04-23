@@ -1,6 +1,7 @@
 """Command-line interface for camera-client package."""
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -84,24 +85,45 @@ def download_archive(url: str, output_dir: str = ".", silent: bool = False) -> b
         return False
 
 
-def download_from_file(file_path: str, output_dir: str = ".") -> None:
+def download_from_file(file_path: str, output_dir: str = ".", camera_id: int = None) -> None:
     """
-    Download multiple camera calibration archives from URLs listed in a file.
+    Download camera calibration archives from a .txt file with URLs or a .json config.
 
-    Non-URL lines (comments, notes, etc.) are automatically skipped.
+    For .txt files: one URL per line, non-URL lines are ignored.
+    For .json files: expects a list of objects with "archive_url" key.
+        Optionally filter by camera_id.
 
     Args:
-        file_path: Path to file containing URLs (one per line, non-URL lines are ignored)
+        file_path: Path to .txt or .json file
         output_dir: Directory to save the downloaded files (default: current directory)
+        camera_id: If provided, only download archives for this camera_id (JSON only)
     """
     try:
-        with open(file_path, 'r') as f:
-            # Filter only lines that are valid URLs
-            urls = [line.strip() for line in f if is_url(line)]
+        if file_path.endswith('.json'):
+            with open(file_path, 'r') as f:
+                configs = json.load(f)
 
-        if not urls:
-            print(f"No URLs found in {file_path}", file=sys.stderr)
-            sys.exit(1)
+            if not isinstance(configs, list):
+                configs = [configs]
+
+            if camera_id is not None:
+                configs = [c for c in configs if c.get('camera_id') == camera_id]
+
+            urls = [c['archive_url'] for c in configs if 'archive_url' in c]
+
+            if not urls:
+                msg = f"No matching entries found in {file_path}"
+                if camera_id is not None:
+                    msg += f" for camera_id={camera_id}"
+                print(msg, file=sys.stderr)
+                sys.exit(1)
+        else:
+            with open(file_path, 'r') as f:
+                urls = [line.strip() for line in f if is_url(line)]
+
+            if not urls:
+                print(f"No URLs found in {file_path}", file=sys.stderr)
+                sys.exit(1)
 
         print(f"Found {len(urls)} URL(s) in {file_path}")
         print(f"Downloading to: {output_dir}\n")
@@ -126,6 +148,9 @@ def download_from_file(file_path: str, output_dir: str = ".") -> None:
 
     except FileNotFoundError:
         print(f"Error: File not found: {file_path}", file=sys.stderr)
+        sys.exit(1)
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"Error parsing JSON file {file_path}: {e}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Error reading file {file_path}: {e}", file=sys.stderr)
@@ -160,6 +185,12 @@ def main():
         default='.',
         help='Output directory (default: current directory)'
     )
+    download_parser.add_argument(
+        '--camera_id',
+        type=int,
+        default=None,
+        help='Filter by camera_id (only used with JSON config files)'
+    )
 
     args = parser.parse_args()
 
@@ -175,7 +206,7 @@ def main():
 
         # Process based on input type
         if args.file:
-            download_from_file(args.file, args.output_dir)
+            download_from_file(args.file, args.output_dir, camera_id=args.camera_id)
         else:
             success = download_archive(args.url, args.output_dir)
             sys.exit(0 if success else 1)
