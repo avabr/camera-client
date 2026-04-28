@@ -109,7 +109,21 @@ def download_from_file(file_path: str, output_dir: str = ".", camera_id: int = N
             if camera_id is not None:
                 configs = [c for c in configs if c.get('camera_id') == camera_id]
 
-            urls = [c['archive_url'] for c in configs if 'archive_url' in c]
+            urls = []
+            for c in configs:
+                if 'archive_url' in c:
+                    urls.append(c['archive_url'])
+                elif 'camera_uuid' in c:
+                    entrypoint = os.environ.get('CAMERA_SERVICE_ENTRYPOINT')
+                    if not entrypoint:
+                        print(
+                            "Error: CAMERA_SERVICE_ENTRYPOINT environment variable is required "
+                            f"for camera_uuid-based entries (camera_id={c.get('camera_id')})",
+                            file=sys.stderr
+                        )
+                        sys.exit(1)
+                    url = f"{entrypoint.rstrip('/')}/processing_api/projection_npz_archive/{c['camera_uuid']}"
+                    urls.append(url)
 
             if not urls:
                 msg = f"No matching entries found in {file_path}"

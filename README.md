@@ -31,12 +31,16 @@ python -m camera_client get_camera_archive https://example.com/camera.npz
 # Download from file with URLs (one per line, non-URL lines ignored)
 python -m camera_client get_camera_archive -f urls.txt -o ./archives
 
-# Download from JSON config (list of objects with "archive_url" key)
+# Download from JSON config (list of objects with "archive_url" or "camera_uuid" key)
 python -m camera_client get_camera_archive -f config.json -o ./archives
 
 # Download only specific camera from JSON config
 python -m camera_client get_camera_archive -f config.json --camera_id=66 -o ./archives
 ```
+
+JSON config entries may use `"archive_url"` (direct link) or `"camera_uuid"` (requires
+`CAMERA_SERVICE_ENTRYPOINT` env variable — the URL is constructed as
+`<CAMERA_SERVICE_ENTRYPOINT>/processing_api/projection_npz_archive/<camera_uuid>`).
 
 ## Quick Start
 
