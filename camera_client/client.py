@@ -29,6 +29,7 @@ class CameraProjection:
                 - map_scale_h, map_scale_w, map_scale_vang: Scale context maps (H x W)
         """
         data = cam_archive_data
+        self.data = data # Store original data for reference if needed
 
         self.camera_id = data["camera_id"]
         self.ctd_geometry = data["ctd_geometry"]

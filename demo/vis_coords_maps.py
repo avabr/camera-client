@@ -1,11 +1,10 @@
-import os
+import os, sys
 from camera_client.loading import read_npz_file
 import matplotlib.pyplot as plt
 import numpy as np
 
 # Usage
-camera_uuid = os.environ["TESTING_CAMERA_UUID"]
-fname = f"camera_archives/camera_{camera_uuid}.npz"
+fname = sys.argv[1]
 
 data = read_npz_file(fname)
 
