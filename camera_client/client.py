@@ -54,6 +54,8 @@ class CameraProjection:
         self.map_scale_w = data["map_scale_w"]
         self.map_scale_vang = data["map_scale_vang"]
 
+        self.camera_layers = data["camera_layers"]
+
         self.im_size = self.src2ctd_points_map.shape[:2]
 
         # Compile transformation expressions for ctd -> gnd

@@ -1,4 +1,8 @@
 import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
@@ -190,12 +194,29 @@ def generate_grid_network(polygon_gnd, grid_step=1.0, interpolation_step=0.1):
     return grid_lines
 
 
+def resolve_archive_path(arg):
+    """Resolve archive path from a full path or camera_id integer."""
+    if arg.isdigit():
+        archives_dir = os.path.join(os.path.dirname(__file__), "..", "camera_archives")
+        import glob
+        matches = glob.glob(os.path.join(archives_dir, f"camera_{arg}_*.npz"))
+        if not matches:
+            print(f"No archive found for camera_id={arg} in {archives_dir}")
+            sys.exit(1)
+        if len(matches) > 1:
+            print(f"Multiple archives found for camera_id={arg}, using first: {matches[0]}")
+        return matches[0]
+    return arg
+
+
 # Usage
-camera_uuid = os.environ["TESTING_CAMERA_UUID"]
-fname = f"camera_archives/camera_{camera_uuid}.npz"
+if len(sys.argv) < 2:
+    print(f"Usage: python {sys.argv[0]} <archive.npz | camera_id>")
+    sys.exit(1)
+
+fname = resolve_archive_path(sys.argv[1])
 data = read_npz_file(fname)
 cp = CameraProjection.load(fname)
-
 
 src_image_url = data["im_src_url"]
 ctd_image_url = data["im_ctd_url"]

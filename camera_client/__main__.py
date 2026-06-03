@@ -36,6 +36,8 @@ def download_archive(url: str, output_dir: str = ".", silent: bool = False) -> b
         True if download succeeded, False otherwise
     """
     try:
+        os.makedirs(output_dir, exist_ok=True)
+
         # Parse the URL to extract filename from path or Content-Disposition header
         parsed_url = urlparse(url)
 
@@ -76,7 +78,7 @@ def download_archive(url: str, output_dir: str = ".", silent: bool = False) -> b
 
             if not silent:
                 print(f"Successfully downloaded: {filename}")
-                print(f"File size: {output_path.stat().st_size} bytes")
+                print(f"File size: {output_path.stat().st_size / 1024 / 1024:.2f} MB")
 
             return True
 
@@ -85,7 +87,7 @@ def download_archive(url: str, output_dir: str = ".", silent: bool = False) -> b
         return False
 
 
-def download_from_file(file_path: str, output_dir: str = ".", camera_id: int = None) -> None:
+def download_from_file(file_path: str, output_dir: str = ".", camera_ids: list = None) -> None:
     """
     Download camera calibration archives from a .txt file with URLs or a .json config.
 
@@ -96,7 +98,7 @@ def download_from_file(file_path: str, output_dir: str = ".", camera_id: int = N
     Args:
         file_path: Path to .txt or .json file
         output_dir: Directory to save the downloaded files (default: current directory)
-        camera_id: If provided, only download archives for this camera_id (JSON only)
+        camera_ids: If provided, only download archives for these camera_ids (JSON only)
     """
     try:
         if file_path.endswith('.json'):
@@ -106,8 +108,8 @@ def download_from_file(file_path: str, output_dir: str = ".", camera_id: int = N
             if not isinstance(configs, list):
                 configs = [configs]
 
-            if camera_id is not None:
-                configs = [c for c in configs if c.get('camera_id') == camera_id]
+            if camera_ids is not None:
+                configs = [c for c in configs if c.get('camera_id') in camera_ids]
 
             urls = []
             for c in configs:
@@ -127,8 +129,8 @@ def download_from_file(file_path: str, output_dir: str = ".", camera_id: int = N
 
             if not urls:
                 msg = f"No matching entries found in {file_path}"
-                if camera_id is not None:
-                    msg += f" for camera_id={camera_id}"
+                if camera_ids is not None:
+                    msg += f" for camera_id={','.join(str(x) for x in camera_ids)}"
                 print(msg, file=sys.stderr)
                 sys.exit(1)
         else:
@@ -196,14 +198,14 @@ def main():
     )
     download_parser.add_argument(
         '-o', '--output-dir',
-        default='.',
-        help='Output directory (default: current directory)'
+        default='camera_archives/',
+        help='Output directory (default: camera_archives/)'
     )
     download_parser.add_argument(
         '--camera_id',
-        type=int,
+        type=str,
         default=None,
-        help='Filter by camera_id (only used with JSON config files)'
+        help='Filter by camera_id, comma-separated for multiple (e.g. --camera_id=1156,1157)'
     )
 
     args = parser.parse_args()
@@ -220,7 +222,10 @@ def main():
 
         # Process based on input type
         if args.file:
-            download_from_file(args.file, args.output_dir, camera_id=args.camera_id)
+            camera_ids = None
+            if args.camera_id:
+                camera_ids = [int(x.strip()) for x in args.camera_id.split(',')]
+            download_from_file(args.file, args.output_dir, camera_ids=camera_ids)
         else:
             success = download_archive(args.url, args.output_dir)
             sys.exit(0 if success else 1)

@@ -71,6 +71,12 @@ def read_npz_file(filename):
     # Ctd image geometry
     ctd_geometry = json.loads(str(data["ctd_geometry"]))
 
+    # Camera layers (optional)
+    if "camera_layers" in data:
+        camera_layers = json.loads(str(data["camera_layers"]))
+    else:
+        camera_layers = {}
+
     # Don't forget to close the file
     data.close()
 
@@ -100,4 +106,6 @@ def read_npz_file(filename):
         "map_scale_vang": map_scale_vang,
         # Ctd image geometry
         "ctd_geometry": ctd_geometry,
+        # Camera layers
+        "camera_layers": camera_layers,
     }
