@@ -1,6 +1,6 @@
 # camera-client
 
-Python SDK for camera calibration and projection transformations. Transform coordinates between distorted image space, corrected image space, and real-world 3D coordinates using pre-computed calibration data.
+Python SDK for camera calibration, projection transformations, and multi-camera spatial uncertainty analysis. Transform coordinates between distorted image space, corrected image space, and real-world 3D coordinates using pre-computed calibration data. Quantify measurement uncertainty and fuse observations from multiple cameras.
 
 ## Features
 
@@ -9,6 +9,10 @@ Python SDK for camera calibration and projection transformations. Transform coor
 - **Lens distortion handling** - Correct for camera lens distortion using calibration lookup tables
 - **Ground plane projection** - Project image coordinates to 3D world coordinates and vice versa
 - **Ray casting** - Generate 3D rays from image coordinates for ray tracing and 3D reconstruction
+- **Calibration error models** - Quantify pixel-level uncertainty from distortion correction and geometric calibration
+- **3D spatial covariance** - Propagate pixel uncertainty to full 3x3 covariance matrices in world space
+- **Multi-camera fusion** - Combine measurements from multiple cameras via information fusion
+- **Triangulation** - Recover 3D positions from multi-camera observations with consistency checking
 - **Sympy-based transformations** - Fast compiled symbolic expressions for mathematical transformations
 - **NumPy-based** - Fast array operations with minimal dependencies
 
@@ -42,29 +46,118 @@ JSON config entries may use `"archive_url"` (direct link) or `"camera_uuid"` (re
 `CAMERA_SERVICE_ENTRYPOINT` env variable — the URL is constructed as
 `<CAMERA_SERVICE_ENTRYPOINT>/processing_api/projection_npz_archive/<camera_uuid>`).
 
-## Quick Start
+## Quick Start (Projection)
 
 ```python
 import numpy as np
 from camera_client import CameraProjection
 
 # Load camera calibration data from NPZ archive
-camera = CameraProjection.load("camera_calibration.npz")
+camera = CameraProjection.load("camera_calibration_archive.npz")
 
-# Transform multiple points (vectorized operations)
-# Note: All methods require (N, 2) or (N, 3) shaped arrays
+# All methods work with (N, 2) or (N, 3) shaped arrays
 source_points = np.array([
     [100, 200],
     [300, 400],
     [500, 600]
 ])  # Shape: (3, 2)
 
-# Remove lens distortion
-corrected_points = camera.src_to_ctd(source_points)
+# ── Forward: image → world ──
 
-# Project to ground plane (height = 0)
+# Project to ground plane: src → gnd (at height = 0)
 ground_points = camera.src_to_gnd(source_points, h=0)
-print(ground_points)  # Returns (N, 3) array with [x, y, z] coordinates
+print(ground_points)  # (N, 3) array with [x, y, z] coordinates
+
+# Remove lens distortion only: src → ctd
+ctd_points = camera.src_to_ctd(source_points)
+
+# ── Reverse: world → image ──
+
+# Project 3D points back to distorted image coordinates
+world_points = np.array([[10.0, 5.0, 0.0], [15.0, 8.0, 1.5]])
+src_points = camera.gnd_to_src(world_points)   # gnd → src
+ctd_points = camera.gnd_to_ctd(world_points)   # gnd → ctd
+
+# Corrected back to distorted
+src_from_ctd = camera.ctd_to_src(ctd_points)   # ctd → src
+```
+
+## Quick Start (Measurements)
+
+Multi-camera uncertainty analysis: error models, covariance fusion, and triangulation.
+
+```python
+import numpy as np
+from camera_client import CameraProjection, CameraNetwork, triangulation
+
+# Load cameras and create a network
+cameras = [
+    CameraProjection.load("camera_1.npz"),
+    CameraProjection.load("camera_2.npz"),
+    CameraProjection.load("camera_3.npz"),
+]
+net = CameraNetwork(cameras)
+# net.cameras      — dict {camera_id: CameraProjection}
+# net.covariances  — dict {camera_id: CameraSpatialCovariance}
+```
+
+### Spatial covariance
+
+`get_covariance` computes 3x3 spatial covariance matrices for 3D points.
+The matrix encodes how pixel-level uncertainty (distortion + geometric calibration + detection)
+propagates into world-space uncertainty through the camera's ray geometry.
+
+```python
+points = np.array([
+    [15.0, 5.0, 0.0],
+    [18.0, 6.0, 1.5],
+])
+
+# Per-camera covariance (no fusion, no visibility check)
+covs_cam = net.get_covariance(points, camera_id=1177, detection_sigma=0.01)
+# covs_cam[i] is a (3, 3) covariance matrix from camera 1177
+
+# Fused covariance from all visible cameras (information fusion)
+covs_fused = net.get_covariance(points, detection_sigma=0.01)
+# covs_fused[i] is (3, 3) fused covariance, or None if not visible to any camera
+
+for i, cov in enumerate(covs_fused):
+    if cov is not None:
+        stds = np.sqrt(np.linalg.eigvalsh(cov))
+        print(f"Point {i}: σ = {stds[0]:.3f}m, {stds[1]:.3f}m, {stds[2]:.3f}m")
+```
+
+### Triangulation
+
+Recover a 3D point from pixel observations in multiple cameras.
+Returns the fused position, a priori covariance (from error models),
+and a posteriori covariance (inflated if cameras are inconsistent).
+
+```python
+# Observations: {camera_id: src_point} — source (distorted) image coordinates
+observations = {
+    1177: np.array([946.9, 853.1]),
+    1178: np.array([956.0, 765.0]),
+}
+
+result = net.triangulate(observations, detection_sigma=0.01)
+p_fused, sigma_prior, sigma_posterior = result
+
+print(f"Position: {p_fused}")
+print(f"Consistent: {sigma_prior is sigma_posterior}")  # True if within n_sigma
+
+# Adjust consistency threshold (default n_sigma=3.0)
+result = net.triangulate(observations, n_sigma=2.0)
+```
+
+### Mahalanobis distance
+
+Check statistical consistency between two point estimates with their covariances.
+
+```python
+d2 = triangulation.mahalanobis_distance(p1, cov1, p2, cov2)
+# d2 is squared Mahalanobis distance; compare to chi-squared thresholds
+# e.g. chi2(3 dof, 99%) ≈ 11.34
 ```
 
 ## Coordinate Systems
@@ -85,280 +178,49 @@ This library handles transformations between three coordinate systems:
    Lens distortion        Lens correction         3D projection
 ```
 
-## Usage Examples
-
-### Basic Coordinate Transformations
-
-```python
-from camera_client import CameraProjection
-import numpy as np
-
-# Load calibration data
-camera = CameraProjection.load("camera_calibration.npz")
-
-# Source (distorted) to Corrected (undistorted)
-src_points = np.array([[640, 480], [1280, 720]])
-ctd_points = camera.src_to_ctd(src_points)
-
-# Corrected back to Source
-src_points_back = camera.ctd_to_src(ctd_points)
-
-# Check round-trip accuracy
-error = np.linalg.norm(src_points - src_points_back, axis=1)
-print(f"Round-trip error: {error}")
-```
-
-### 3D Ground Projection
-
-```python
-# Project image points to ground plane
-src_points = np.array([[640, 480], [800, 600]])
-
-# Project to ground at height = 0 (ground level)
-ground_points = camera.src_to_gnd(src_points, h=0)
-print(ground_points)  # Shape: (2, 3) with [x, y, z] coordinates
-
-# Project to elevated plane (e.g., 1.5 meters above ground)
-elevated_points = camera.src_to_gnd(src_points, h=1.5)
-
-# Different height for each point
-heights = np.array([0, 1.5])
-mixed_points = camera.src_to_gnd(src_points, h=heights)
-```
-
-### Reverse Projection (3D to Image)
-
-```python
-# Project 3D world coordinates back to image
-world_points = np.array([
-    [10.0, 5.0, 0.0],    # x, y, z in meters
-    [15.0, 8.0, 1.5]
-])
-
-# Get corrected image coordinates
-ctd_points = camera.gnd_to_ctd(world_points)
-
-# Get source (distorted) image coordinates
-src_points = camera.gnd_to_src(world_points)
-```
-
-### Batch Processing
-
-```python
-# Process large batches of points efficiently
-num_points = 10000
-random_points = np.random.rand(num_points, 2) * [1920, 1080]
-
-# Vectorized transformation (fast!)
-corrected = camera.src_to_ctd(random_points)
-ground = camera.src_to_gnd(random_points, h=0)
-```
-
-### Ray Casting (3D Reconstruction)
-
-```python
-# Get 3D rays from image points (useful for ray tracing, 3D reconstruction)
-src_points = np.array([[640, 480], [800, 600]])
-
-# Get ray directions from source (distorted) coordinates
-rays = camera.src_to_ray(src_points)
-print(rays.shape)  # (2, 3) - normalized direction vectors
-
-# Or from corrected coordinates
-ctd_points = camera.src_to_ctd(src_points)
-rays = camera.ctd_to_ray(ctd_points)
-
-# Get camera position in world space (ray origin)
-key_point = camera.get_key_point()
-print(key_point.shape)  # (3,) - [x, y, z] camera position
-
-# Ray equation: point_on_ray = key_point + t * ray_direction
-# All rays are normalized to unit length
-```
-
-### Accessing Camera Properties
-
-```python
-# Get camera dimensions
-print(f"Image size: {camera.im_width} x {camera.im_height}")
-print(f"Image WH: {camera.im_wh_size}")
-print(f"Plan scale: {camera.plan_scale}")
-```
-
 ## API Reference
 
-### `CameraProjection.load(archive_path)`
-
-Load camera calibration from NPZ file.
-
-**Parameters:**
-- `archive_path` (str): Path to .npz calibration archive
-
-**Returns:**
-- `CameraProjection` instance
-
----
-
-### `src_to_ctd(points)`
-
-Transform from source (distorted) to corrected coordinates.
-
-**Parameters:**
-- `points` (np.ndarray): Shape **(N, 2)** array of [x, y] coordinates
-
-**Returns:**
-- `np.ndarray`: Shape **(N, 2)** corrected coordinates
-
-**Note:** Input must be 2D array. For single point use `np.array([[x, y]])`
-
----
-
-### `ctd_to_src(points)`
-
-Transform from corrected to source (distorted) coordinates.
-
-**Parameters:**
-- `points` (np.ndarray): Shape (N, 2) array of [x, y] coordinates
-
-**Returns:**
-- `np.ndarray`: Shape (N, 2) source coordinates
-
----
-
-### `src_to_gnd(points, h)`
-
-Transform from source coordinates to 3D ground coordinates.
-
-**Parameters:**
-- `points` (np.ndarray): Shape (N, 2) array of [x, y] coordinates
-- `h` (float or np.ndarray): Height(s) above ground. Scalar or shape (N,) array
-
-**Returns:**
-- `np.ndarray`: Shape (N, 3) ground coordinates [x, y, z]
-
----
-
-### `gnd_to_src(points)`
-
-Transform from 3D ground coordinates to source coordinates.
-
-**Parameters:**
-- `points` (np.ndarray): Shape (N, 3) array of [x, y, z] coordinates
-
-**Returns:**
-- `np.ndarray`: Shape (N, 2) source coordinates
-
----
-
-### `ctd_to_gnd(points, h)`
-
-Transform from corrected coordinates to 3D ground coordinates.
-
-**Parameters:**
-- `points` (np.ndarray): Shape (N, 2) array of [x, y] coordinates
-- `h` (float or np.ndarray): Height(s) above ground
-
-**Returns:**
-- `np.ndarray`: Shape (N, 3) ground coordinates
-
----
-
-### `gnd_to_ctd(points)`
-
-Transform from 3D ground coordinates to corrected coordinates.
-
-**Parameters:**
-- `points` (np.ndarray): Shape (N, 3) array of [x, y, z] coordinates
-
-**Returns:**
-- `np.ndarray`: Shape (N, 2) corrected coordinates
-
----
-
-### `src_to_ray(points)`
-
-Generate 3D ray directions from source (distorted) image coordinates.
-
-**Parameters:**
-- `points` (np.ndarray): Shape (N, 2) array of [x, y] coordinates
-
-**Returns:**
-- `np.ndarray`: Shape (N, 3) normalized ray direction vectors
-
-**Note:** All rays originate from the camera key-point (use `get_key_point()`)
-
----
-
-### `ctd_to_ray(points)`
-
-Generate 3D ray directions from corrected (undistorted) image coordinates.
-
-**Parameters:**
-- `points` (np.ndarray): Shape (N, 2) array of [x, y] coordinates
-
-**Returns:**
-- `np.ndarray`: Shape (N, 3) normalized ray direction vectors
-
----
-
-### `get_key_point()`
-
-Get the camera position (key-point) in world space.
-
-**Returns:**
-- `np.ndarray`: Shape (3,) array with [x, y, z] camera position
-
----
-
-### `get_ctd_points_context(ctd_points)`
-
-Get scale context values for corrected (CTD) image points.
-
-**Parameters:**
-- `ctd_points` (np.ndarray): Shape (N, 2) array of [x, y] corrected coordinates
-
-**Returns:**
-- `dict`: Dictionary with keys:
-  - `wscale` (np.ndarray): Shape (N,) width scale values
-  - `hscale` (np.ndarray): Shape (N,) height scale values
-  - `vangle` (np.ndarray): Shape (N,) vertical angle values (radians)
-
-**Note:** Out-of-bounds points will have NaN values
-
-**Example:**
-```python
-ctd_points = np.array([[640, 480], [800, 600]])
-context = camera.get_ctd_points_context(ctd_points)
-print(context['wscale'])  # Width scale at each point
-print(context['hscale'])  # Height scale at each point
-print(context['vangle'])  # Vertical angle at each point
-```
-
----
-
-### `get_src_points_context(src_points)`
-
-Get scale context values for source (distorted) image points.
-
-**Parameters:**
-- `src_points` (np.ndarray): Shape (N, 2) array of [x, y] source coordinates
-
-**Returns:**
-- `dict`: Dictionary with keys:
-  - `wscale` (np.ndarray): Shape (N,) width scale values
-  - `hscale` (np.ndarray): Shape (N,) height scale values
-  - `vangle` (np.ndarray): Shape (N,) vertical angle values (radians)
-
-**Note:** Internally converts source points to CTD coordinates first, then retrieves context
-
-**Example:**
-```python
-src_points = np.array([[640, 480], [800, 600]])
-context = camera.get_src_points_context(src_points)
-print(context['wscale'])  # Width scale at each point
-```
-
----
+### `CameraProjection`
+
+| Method | Input | Output | Description |
+|--------|-------|--------|-------------|
+| `load(archive_path)` | str | `CameraProjection` | Load calibration from .npz file |
+| `src_to_ctd(points)` | (N, 2) | (N, 2) | Source → corrected (undistort) |
+| `ctd_to_src(points)` | (N, 2) | (N, 2) | Corrected → source (redistort) |
+| `src_to_gnd(points, h)` | (N, 2), scalar/array | (N, 3) | Source → 3D ground at height h |
+| `gnd_to_src(points)` | (N, 3) | (N, 2) | 3D ground → source |
+| `ctd_to_gnd(points, h)` | (N, 2), scalar/array | (N, 3) | Corrected → 3D ground at height h |
+| `gnd_to_ctd(points)` | (N, 3) | (N, 2) | 3D ground → corrected |
+| `src_to_ray(points)` | (N, 2) | (N, 3) | Source → normalized ray directions |
+| `ctd_to_ray(points)` | (N, 2) | (N, 3) | Corrected → normalized ray directions |
+| `ctd_to_ray_jacobian(x, y)` | scalar, scalar | (3, 2) | Ray direction Jacobian at CTD point |
+| `get_key_point()` | — | (3,) | Camera position in world space |
+| `get_ctd_points_context(points)` | (N, 2) | dict | Scale context (wscale, hscale, vangle) at CTD points |
+| `get_src_points_context(points)` | (N, 2) | dict | Scale context at source points (converts to CTD internally) |
+
+All point methods expect 2D arrays. For a single point: `np.array([[x, y]])`.
+Out-of-bounds points return NaN. Height `h` can be a scalar or per-point (N,) array.
+
+### `CameraNetwork`
+
+| Method | Description |
+|--------|-------------|
+| `CameraNetwork(cameras)` | Create network from list of `CameraProjection` instances |
+| `get_covariance(points, ...)` | Fused 3x3 covariance for (N, 3) points from all visible cameras |
+| `get_covariance(points, camera_id=id, ...)` | Per-camera 3x3 covariance (no fusion, no visibility check) |
+| `triangulate(observations, ...)` | 3D point + covariance from `{camera_id: src_point}` observations |
+
+Common parameters: `detection_sigma` (float), `sigma_binding` (float), `use_efov` (bool), `n_sigma` (float).
+
+### `triangulation` module
+
+| Function | Description |
+|----------|-------------|
+| `fuse_covariances(covs)` | (Σ₁⁻¹ + ... + Σₙ⁻¹)⁻¹ |
+| `information_fusion(points, covs)` | Fused point + covariance |
+| `mahalanobis_distance(p1, cov1, p2, cov2)` | Squared Mahalanobis distance |
+| `least_squares_intersection(rays)` | Closest point to N rays (SVD) |
+| `closest_point_on_ray(origin, dir, point)` | Project point onto ray |
 
 ## Calibration File Format
 
@@ -408,9 +270,9 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Author
 
-Alexander Abramov ([extremal.ru@gmail.com](mailto:extremal.ru@gmail.com))
+Alexander V. Abramov ([avabr.me@gmail.com](mailto:avabr.me@gmail.com))
 
 ## Upload PyPi
 
     rm dist/* && python -m build && python -m twine upload dist/*
-    
+

@@ -76,8 +76,15 @@ class CameraProjection:
         )
 
         # Compile ray direction expressions for ctd -> ray
+        exp_im2ray = sp.sympify(data["exp_im2ray"])
         self._lambda_im2ray = sp.lambdify(
-            (x_im, y_im), sp.sympify(data["exp_im2ray"]), "numpy"
+            (x_im, y_im), exp_im2ray, "numpy"
+        )
+
+        # Compile ray direction Jacobian for covariance computations
+        J_im2ray = exp_im2ray.jacobian(sp.Matrix([x_im, y_im]))
+        self._lambda_im2ray_jacobian = sp.lambdify(
+            (x_im, y_im), J_im2ray, "numpy"
         )
 
     def src_to_ctd(self, points):
@@ -287,6 +294,22 @@ class CameraProjection:
         rays_normalized = rays / ray_lengths
 
         return rays_normalized
+
+    def ctd_to_ray_jacobian(self, x_ctd, y_ctd):
+        """
+        Ray direction Jacobian d(e_ray)/d(x_im, y_im) at a single CTD point.
+
+        Args:
+            x_ctd: x coordinate in corrected image space (scalar)
+            y_ctd: y coordinate in corrected image space (scalar)
+
+        Returns:
+            (3, 2) Jacobian matrix
+        """
+        return np.array(
+            self._lambda_im2ray_jacobian(float(x_ctd), float(y_ctd)),
+            dtype=np.float64,
+        )
 
     def src_to_ray(self, points):
         """
