@@ -103,9 +103,9 @@ net = CameraNetwork(cameras)
 
 ### Spatial covariance
 
-`get_covariance` computes 3x3 spatial covariance matrices for 3D points.
-The matrix encodes how pixel-level uncertainty (distortion + geometric calibration + detection)
-propagates into world-space uncertainty through the camera's ray geometry.
+`get_covariance` computes 3x3 spatial covariance matrices for 3D points —
+both per-camera and fused across all visible cameras in a single call.
+Returns a `NetworkCovariance` object.
 
 ```python
 points = np.array([
@@ -113,15 +113,15 @@ points = np.array([
     [18.0, 6.0, 1.5],
 ])
 
-# Per-camera covariance (no fusion, no visibility check)
-covs_cam = net.get_covariance(points, camera_id=1177, detection_sigma=0.01)
-# covs_cam[i] is a (3, 3) covariance matrix from camera 1177
+result = net.get_covariance(points, detection_sigma=0.01)
+
+# Per-camera covariance (None if camera doesn't see the point)
+cov_cam = result[1177][0]       # camera 1177, point 0
 
 # Fused covariance from all visible cameras (information fusion)
-covs_fused = net.get_covariance(points, detection_sigma=0.01)
-# covs_fused[i] is (3, 3) fused covariance, or None if not visible to any camera
+cov_fused = result.fused[0]     # fused, point 0 (or None if no camera sees it)
 
-for i, cov in enumerate(covs_fused):
+for i, cov in enumerate(result.fused):
     if cov is not None:
         stds = np.sqrt(np.linalg.eigvalsh(cov))
         print(f"Point {i}: σ = {stds[0]:.3f}m, {stds[1]:.3f}m, {stds[2]:.3f}m")
@@ -206,11 +206,18 @@ Out-of-bounds points return NaN. Height `h` can be a scalar or per-point (N,) ar
 | Method | Description |
 |--------|-------------|
 | `CameraNetwork(cameras)` | Create network from list of `CameraProjection` instances |
-| `get_covariance(points, ...)` | Fused 3x3 covariance for (N, 3) points from all visible cameras |
-| `get_covariance(points, camera_id=id, ...)` | Per-camera 3x3 covariance (no fusion, no visibility check) |
+| `get_covariance(points, ...)` | Returns `NetworkCovariance` with per-camera and fused 3x3 covariances |
 | `triangulate(observations, ...)` | 3D point + covariance from `{camera_id: src_point}` observations |
 
 Common parameters: `detection_sigma` (float), `sigma_binding` (float), `use_efov` (bool), `n_sigma` (float).
+
+### `NetworkCovariance`
+
+| Access | Description |
+|--------|-------------|
+| `result[camera_id]` | List of N per-camera covariances (3x3 or None) |
+| `result.fused` | List of N fused covariances (3x3 or None) |
+| `result.camera_ids` | List of camera IDs in the result |
 
 ### `triangulation` module
 

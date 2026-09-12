@@ -31,6 +31,33 @@ def _points_in_polygon(points_xy, polygon_xy):
     return np.bitwise_xor.reduce(crosses, axis=1)
 
 
+class NetworkCovariance:
+    """Result of CameraNetwork.get_covariance().
+
+    Access per-camera covariance lists by camera_id:
+        result[1177]  — list of N covariance matrices (or None) for camera 1177
+
+    Access fused covariance:
+        result.fused  — list of N fused covariance matrices (or None)
+    """
+
+    def __init__(self, cameras, fused):
+        self._cameras = cameras  # dict {camera_id: [cov_or_none, ...]}
+        self.fused = fused       # list [cov_or_none, ...]
+
+    def __getitem__(self, camera_id):
+        return self._cameras[camera_id]
+
+    @property
+    def camera_ids(self):
+        return list(self._cameras.keys())
+
+    def __repr__(self):
+        n = len(self.fused)
+        n_visible = sum(1 for c in self.fused if c is not None)
+        return f"NetworkCovariance(points={n}, visible={n_visible}, cameras={self.camera_ids})"
+
+
 class CameraNetwork:
     """A network of cameras with spatial covariance models.
 
@@ -88,52 +115,49 @@ class CameraNetwork:
                     visible.append(cid)
         return visible
 
-    def get_covariance(self, points, detection_sigma=0.0, sigma_binding=0.0,
-                       use_efov=True, camera_id=None):
-        """Compute covariance for 3D points.
+    def get_covariance(self, points, detection_sigma=0.0, sigma_binding=0.0, use_efov=True):
+        """Compute per-camera and fused covariance for 3D points.
 
-        If camera_id is None (default), fuses covariances from all visible cameras
-        via information fusion. If camera_id is specified, computes covariance
-        from that single camera (no visibility check, no fusion).
+        Visibility is always checked:
+        - use_efov=True (default): point's xy projection must fall inside the
+          camera's ground EFOV polygon
+        - use_efov=False: point must project onto valid image area
 
         Args:
             points: (N, 3) array of 3D points [x, y, z]
             detection_sigma: detection uncertainty (fraction of image width)
             sigma_binding: spatial binding uncertainty in meters
             use_efov: if True, use EFOV ground polygons for visibility;
-                      if False, use image projection bounds (ignored when camera_id is set)
-            camera_id: if set, compute covariance from this camera only
+                      if False, use image projection bounds
 
         Returns:
-            list of N elements, each either a (3, 3) covariance matrix
-            or None if the point is not visible to any camera
+            NetworkCovariance with:
+              result[camera_id] — list of N per-camera covariances (or None)
+              result.fused       — list of N fused covariances (or None)
         """
         points = np.asarray(points, dtype=np.float64)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError(f"Expected (N, 3) array, got shape {points.shape}")
 
         N = len(points)
-        result = [None] * N
-
-        if camera_id is not None:
-            cov_model = self.covariances[camera_id]
-            for i in range(N):
-                result[i] = cov_model.get_covariance(points[i], detection_sigma, sigma_binding)
-            return result
+        per_camera = {cid: [None] * N for cid in self.cameras}
+        fused = [None] * N
 
         for i in range(N):
             p = points[i]
             visible_ids = self._visible_camera_ids(p, use_efov)
-            if not visible_ids:
-                continue
 
-            covs = [
-                self.covariances[cid].get_covariance(p, detection_sigma, sigma_binding)
-                for cid in visible_ids
-            ]
-            result[i] = triangulation.fuse_covariances(covs)
+            covs_for_fusion = []
+            for cid in visible_ids:
+                cov = self.covariances[cid].get_covariance(p, detection_sigma, sigma_binding)
+                if cov is not None:
+                    per_camera[cid][i] = cov
+                    covs_for_fusion.append(cov)
 
-        return result
+            if covs_for_fusion:
+                fused[i] = triangulation.fuse_covariances(covs_for_fusion)
+
+        return NetworkCovariance(per_camera, fused)
 
     def triangulate(self, observations, detection_sigma=0.0, sigma_binding=0.0, n_sigma=3.0):
         """Triangulate a 3D point from observations in multiple cameras.
@@ -187,6 +211,8 @@ class CameraNetwork:
             cov = self.covariances[cid].get_covariance(
                 p_on_ray, detection_sigma, sigma_binding
             )
+            if cov is None:
+                return None
             ray_points.append(p_on_ray)
             ray_covs.append(cov)
 

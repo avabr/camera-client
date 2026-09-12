@@ -197,12 +197,18 @@ class CameraSpatialCovariance:
             p: 3D point [x, y, z]
             detection_sigma: detection uncertainty (fraction of image width)
             sigma_binding: spatial binding uncertainty in meters
+
+        Returns:
+            (3, 3) covariance matrix, or None if the point is outside the image
         """
         p = np.asarray(p, dtype=np.float64)
         cam = self.camera
 
         ctd = cam.gnd_to_ctd(p.reshape(1, 3))[0]
         x_ctd, y_ctd = float(ctd[0]), float(ctd[1])
+
+        if not (0 <= x_ctd < cam.im_width and 0 <= y_ctd < cam.im_height):
+            return None
 
         d = np.linalg.norm(p - self.key_point)
         e_ray = cam.ctd_to_ray(np.array([[x_ctd, y_ctd]]))[0]
