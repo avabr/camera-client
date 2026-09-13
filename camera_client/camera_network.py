@@ -78,7 +78,8 @@ class CameraNetwork:
 
         self.cameras = {}
         self.covariances = {}
-        self._efov_polygons_gnd = {}
+        self._efov_gnd_xy = {}    # ground EFOV polygon vertices (M, 2)
+        self._lifted_ctd_cache = {}  # (cid, h) -> lifted CTD polygon (M, 2)
 
         for cam in cameras:
             cid = cam.camera_id
@@ -89,9 +90,9 @@ class CameraNetwork:
             if efov and efov.get("coordinates"):
                 pts_ctd = np.array(efov["coordinates"][0])
                 pts_gnd = cam.ctd_to_gnd(pts_ctd, h=0)
-                self._efov_polygons_gnd[cid] = pts_gnd[:, :2]
+                self._efov_gnd_xy[cid] = pts_gnd[:, :2]
             else:
-                self._efov_polygons_gnd[cid] = None
+                self._efov_gnd_xy[cid] = None
 
     @property
     def camera_ids(self):
@@ -103,15 +104,40 @@ class CameraNetwork:
     def __repr__(self):
         return f"CameraNetwork(cameras={self.camera_ids})"
 
+    def _is_in_front(self, cid, point):
+        """Check if point is in front of the camera (not behind)."""
+        key_point = self.covariances[cid].key_point
+        cam = self.cameras[cid]
+        center_ray = cam.ctd_to_ray(np.array([[cam.im_width / 2, cam.im_height / 2]]))[0]
+        return float(np.dot(point - key_point, center_ray)) > 0
+
     def _visible_camera_ids(self, point, use_efov):
-        """Return list of camera_ids that see the given 3D point."""
+        """Return list of camera_ids that see the given 3D point.
+
+        When use_efov=True: lifts EFOV ground polygon to the point's height,
+        projects to CTD, and checks if the point's CTD projection falls inside.
+        Also checks that the point is in front of the camera.
+
+        When use_efov=False: checks that the point projects onto valid image area.
+        """
         visible = []
         for cid, cam in self.cameras.items():
             if use_efov:
-                polygon = self._efov_polygons_gnd[cid]
-                if polygon is None:
+                gnd_xy = self._efov_gnd_xy[cid]
+                if gnd_xy is None:
                     continue
-                if _points_in_polygon(point[:2].reshape(1, 2), polygon)[0]:
+                if not self._is_in_front(cid, point):
+                    continue
+                # Lift EFOV vertices to point's height and project to CTD (cached)
+                h = float(point[2])
+                cache_key = (cid, h)
+                if cache_key not in self._lifted_ctd_cache:
+                    lifted_gnd = np.column_stack([gnd_xy, np.full(len(gnd_xy), h)])
+                    self._lifted_ctd_cache[cache_key] = cam.gnd_to_ctd(lifted_gnd)
+                lifted_ctd = self._lifted_ctd_cache[cache_key]
+                # Check if point's CTD projection falls inside lifted polygon
+                point_ctd = cam.gnd_to_ctd(point.reshape(1, 3))[0]
+                if _points_in_polygon(point_ctd.reshape(1, 2), lifted_ctd)[0]:
                     visible.append(cid)
             else:
                 ctd = cam.gnd_to_ctd(point.reshape(1, 3))[0]
