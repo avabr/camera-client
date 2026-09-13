@@ -52,6 +52,10 @@ class NetworkCovariance:
     def camera_ids(self):
         return list(self._cameras.keys())
 
+    def visible_camera_ids(self, point_index=0):
+        """Return list of camera_ids that see the given point."""
+        return [cid for cid, covs in self._cameras.items() if covs[point_index] is not None]
+
     def __repr__(self):
         n = len(self.fused)
         n_visible = sum(1 for c in self.fused if c is not None)

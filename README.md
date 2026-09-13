@@ -217,7 +217,8 @@ Common parameters: `detection_sigma` (float), `sigma_binding` (float), `use_efov
 |--------|-------------|
 | `result[camera_id]` | List of N per-camera covariances (3x3 or None) |
 | `result.fused` | List of N fused covariances (3x3 or None) |
-| `result.camera_ids` | List of camera IDs in the result |
+| `result.camera_ids` | List of all camera IDs in the network |
+| `result.visible_camera_ids(i=0)` | List of camera IDs that see point i |
 
 ### `triangulation` module
 
